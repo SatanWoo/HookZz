@@ -66,6 +66,7 @@ void *get_closure_bridge() {
   _ ldr(r12, MEM_EXT(sp, 4, PostIndex));
   _ ldr(lr, MEM_EXT(sp, 4, PostIndex));
 
+  // auto switch A32 & T32 with `least significant bit`, refer `docs/A32_T32_states_switch.md`
   _ mov(pc, r12);
 
   AssemblerCode *code = AssemblerCode::FinalizeTurboAssembler(&turbo_assembler_);

@@ -11,9 +11,10 @@ namespace arm {
 
 static bool is_thumb2(uint32_t inst) {
   uint16_t inst1, inst2;
-  inst1        = inst & 0x0000ffff;
-  inst2        = (inst & 0xffff0000) >> 16;
-  uint32_t op0 = bits(inst1, 11, 12);
+  inst1 = inst & 0x0000ffff;
+  inst2 = (inst & 0xffff0000) >> 16;
+  // refer: Top level T32 instruction set encoding
+  uint32_t op0 = bits(inst1, 13, 15);
 
   if (op0 == 0b111) {
     return true;
@@ -182,9 +183,6 @@ void Thumb1RelocateSingleInst(int16_t inst, uint32_t cur_pc, CustomThumbTurboAss
     uint16_t imm8 = bits(inst, 0, 7);
     val           = cur_pc + imm8;
 
-    if (cur_pc % 4)
-      _ t1_nop();
-
     CustomThumbPseudoLabel label;
     // ===
     _ T2_Ldr(Register::from_code(rd), &label);
@@ -193,6 +191,7 @@ void Thumb1RelocateSingleInst(int16_t inst, uint32_t cur_pc, CustomThumbTurboAss
     rewrite_flag = true;
   }
 
+  // b
   if ((inst & 0xf000) == 0xd000) {
     uint16_t cond = bits(inst, 8, 11);
     // cond != 111x
@@ -200,19 +199,16 @@ void Thumb1RelocateSingleInst(int16_t inst, uint32_t cur_pc, CustomThumbTurboAss
       UNREACHABLE();
     }
     uint16_t imm8   = bits(inst, 0, 7);
-    uint32_t offset = imm8 << 2;
+    uint32_t offset = imm8 << 1;
     val             = cur_pc + offset;
-
-    if (cur_pc % 4)
-      _ t1_nop();
 
     CustomThumbPseudoLabel label;
     // modify imm8 field
-    imm8 = 0x4 >> 2;
+    imm8 = 0x4 >> 1;
     // ===
     _ EmitInt16((inst & 0xfff0) | imm8);
     _ t1_nop();
-    _ t2_b(0);
+    _ t2_b(4);
     _ T2_Ldr(pc, &label);
     // ===
     labels.push_back({label, val});
@@ -225,11 +221,7 @@ void Thumb1RelocateSingleInst(int16_t inst, uint32_t cur_pc, CustomThumbTurboAss
     uint16_t i      = bit(inst, 9);
     uint32_t offset = (i << 6) | (imm5 << 1);
     val             = cur_pc + offset;
-
-    rn = bits(inst, 0, 2);
-
-    if (cur_pc % 4)
-      _ t1_nop();
+    rn              = bits(inst, 0, 2);
 
     CustomThumbPseudoLabel label;
     imm5 = bits(0x4 >> 1, 1, 5);
@@ -248,9 +240,6 @@ void Thumb1RelocateSingleInst(int16_t inst, uint32_t cur_pc, CustomThumbTurboAss
     uint16_t imm11  = bits(inst, 0, 10);
     uint32_t offset = imm11 << 1;
     val             = cur_pc + offset;
-
-    if (cur_pc % 4)
-      _ t1_nop();
 
     CustomThumbPseudoLabel label;
     // ===
@@ -288,18 +277,16 @@ void Thumb2RelocateSingleInst(int16_t inst1, int16_t inst2, uint32_t cur_pc,
       int imm11 = bits(inst2, 0, 10);
 
       int32_t label = (imm11 << 1) | (imm6 << 12) | (J1 << 18) | (J2 << 19) | (S << 20);
-      int32_t val   = cur_pc + label + Thumb_PC_OFFSET;
+      uint32_t val  = cur_pc + label;
 
-      if (cur_pc % 4)
-        _ t1_nop();
       // ===
       imm11 = 0x4 >> 1;
-      _ EmitInt16(inst1 & 0xffc0);         // clear imm6
+      _ EmitInt16(inst1 & 0xffc0);           // clear imm6
       _ EmitInt16((inst2 & 0xd000) | imm11); // 1. clear J1, J2, origin_imm12 2. set new imm11
 
       _ t2_b(4);
       _ t2_ldr(pc, MemOperand(pc, 0));
-      _ Emit(val);
+      _ Emit(val + THUMB_ADDRESS_FLAG);
       // ===
       rewrite_flag = true;
     }
@@ -317,11 +304,9 @@ void Thumb2RelocateSingleInst(int16_t inst1, int16_t inst2, uint32_t cur_pc,
       int32_t label = (imm11 << 1) | (imm10 << 12) | (J1 << 22) | (J2 << 23) | (S << 24);
       int32_t val   = cur_pc + label;
 
-      if (cur_pc % 4)
-        _ t1_nop();
       // ===
       _ t2_ldr(pc, MemOperand(pc, 0));
-      _ Emit(val);
+      _ Emit(val + THUMB_ADDRESS_FLAG);
       // ===
       rewrite_flag = true;
     }
@@ -342,7 +327,7 @@ void Thumb2RelocateSingleInst(int16_t inst1, int16_t inst2, uint32_t cur_pc,
       _ t2_bl(4);
       _ t2_b(4);
       _ t2_ldr(pc, MemOperand(pc, 0));
-      _ Emit(val);
+      _ Emit(val + THUMB_ADDRESS_FLAG);
       // =====
       rewrite_flag = true;
     }
@@ -363,7 +348,7 @@ void Thumb2RelocateSingleInst(int16_t inst1, int16_t inst2, uint32_t cur_pc,
       _ t2_bl(4);
       _ t2_b(4);
       _ t2_ldr(pc, MemOperand(pc, 0));
-      _ Emit(val);
+      _ Emit(val + THUMB_ADDRESS_FLAG);
       // =====
       rewrite_flag = true;
     }
@@ -433,23 +418,26 @@ void Thumb2RelocateSingleInst(int16_t inst1, int16_t inst2, uint32_t cur_pc,
 
 // =====
 
-AssemblerCode *gen_arm_relocate_code(uintptr_t aligned_src_pc, int *relocate_size) {
-  uintptr_t cur_pc = aligned_src_pc;
-  uint32_t inst    = *(uint32_t *)aligned_src_pc;
+AssemblerCode *gen_arm_relocate_code(uintptr_t aligned_src_address, int *relocate_size) {
+  uintptr_t cur_addr = aligned_src_address;
+  uintptr_t cur_pc   = aligned_src_address + ARM_PC_OFFSET;
+  uint32_t inst      = *(uint32_t *)cur_addr;
 
   TurboAssembler turbo_assembler_;
 #define _ turbo_assembler_.
-  while (cur_pc < (aligned_src_pc + *relocate_size)) {
+  while (cur_addr < (aligned_src_address + *relocate_size)) {
     ARMRelocateSingleInst(inst, cur_pc, turbo_assembler_);
     DLOG("[*] relocate arm inst: 0x%x\n", inst);
     // Move to next instruction
-    cur_pc += 4;
-    inst = *(uint32_t *)cur_pc;
+    cur_pc += ARM_INST_LEN;
+    cur_addr += ARM_INST_LEN;
+    inst = *(uint32_t *)cur_addr;
   }
 
   // Branch to the rest of instructions
   CodeGen codegen(&turbo_assembler_);
-  codegen.LiteralLdrBranch(cur_pc + 4);
+  // next instruction address  == cur_pc - 4
+  codegen.LiteralLdrBranch(cur_pc - ARM_INST_LEN);
 
   // Realize all the Pseudo-Label-Data
   for (auto it : labels) {
@@ -460,55 +448,58 @@ AssemblerCode *gen_arm_relocate_code(uintptr_t aligned_src_pc, int *relocate_siz
   return code;
 }
 
-AssemblerCode *gen_thumb_relocate_code(uintptr_t aligned_src_pc, int *relocate_size) {
-  uintptr_t cur_pc         = aligned_src_pc;
-  uint32_t inst            = *(uint32_t *)aligned_src_pc;
+AssemblerCode *gen_thumb_relocate_code(uintptr_t aligned_src_address, int *relocate_size) {
+  uintptr_t cur_addr       = aligned_src_address;
+  uintptr_t cur_pc         = aligned_src_address + Thumb_PC_OFFSET;
+  uint32_t inst            = *(uint32_t *)cur_addr;
   int actual_relocate_size = 0;
   CustomThumbTurboAssembler turbo_assembler_;
 #define _ turbo_assembler_.
-  while (cur_pc < (aligned_src_pc + *relocate_size)) {
+  while (cur_addr < (aligned_src_address + *relocate_size)) {
     if (is_thumb2(inst)) {
       Thumb2RelocateSingleInst((int16_t)inst, (int16_t)(inst >> 16), cur_pc, turbo_assembler_);
       DLOG("[*] relocate thumb2 inst: 0x%x\n", inst);
 
       // Move to next instruction
-      cur_pc += 4;
-      actual_relocate_size += 4;
-      inst = *(uint32_t *)cur_pc;
+      cur_pc += Thumb2_INST_LEN;
+      cur_addr += Thumb2_INST_LEN;
+      actual_relocate_size += Thumb2_INST_LEN;
+      inst = *(uint32_t *)cur_addr;
     } else {
       Thumb1RelocateSingleInst((int16_t)inst, cur_pc, turbo_assembler_);
       DLOG("[*] relocate thumb1 inst: 0x%x\n", (uint16_t)inst);
 
       // Move to next instruction
-      cur_pc += 2;
-      actual_relocate_size += 2;
-      inst = *(uint32_t *)cur_pc;
+      cur_pc += Thumb1_INST_LEN;
+      cur_addr += Thumb1_INST_LEN;
+      actual_relocate_size += Thumb1_INST_LEN;
+      inst = *(uint32_t *)cur_addr;
     }
   }
 
   // set the actual relocate instruction size;
   *relocate_size = actual_relocate_size;
 
-  if (cur_pc % 4) {
-    _ t1_nop();
-  }
   _ t2_ldr(pc, MemOperand(pc, 0));
-  _ Emit(cur_pc);
-
+  // Check the last instruction if thumb2
+  if (is_thumb2(inst))
+    _ Emit(cur_pc + THUMB_ADDRESS_FLAG);
+  else
+    _ Emit(cur_pc - Thumb1_INST_LEN + THUMB_ADDRESS_FLAG);
   AssemblerCode *code = AssemblerCode::FinalizeTurboAssembler(&turbo_assembler_);
   return code;
 }
 
-Code *GenRelocateCode(uintptr_t src_pc, int *relocate_size) {
-  uword aligned_pc = ThumbAlign(src_pc);
+Code *GenRelocateCode(uintptr_t src_address, int *relocate_size) {
+  uword aligned_src_address = ThumbAlign(src_address);
 
-  bool is_thumb = src_pc % 2;
+  bool is_thumb = src_address % 2;
 
   AssemblerCode *code = NULL;
   if (is_thumb) {
-    code = gen_thumb_relocate_code(aligned_pc, relocate_size);
+    code = gen_thumb_relocate_code(aligned_src_address, relocate_size);
   } else {
-    code = gen_arm_relocate_code(aligned_pc, relocate_size);
+    code = gen_arm_relocate_code(aligned_src_address, relocate_size);
   }
   return code;
 }

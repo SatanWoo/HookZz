@@ -27,7 +27,8 @@ typedef struct _PseudoLabelData {
   uintptr_t address;
 } PseudoLabelData;
 
-Code *GenRelocateCode(uint64_t src_pc, int *relocate_size) {
+Code *GenRelocateCode(uint64_t src_address, int *relocate_size) {
+  uint64_t src_pc = src_address;
   uint64_t cur_pc = src_pc;
   uint32_t inst   = *(uint32_t *)src_pc;
 

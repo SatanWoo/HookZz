@@ -305,11 +305,13 @@ public:
 class Assembler : public AssemblerBase {
 public:
   Assembler();
-
   void CommitRealize(void *address) {
-    released_address_ = address;
+    uint32_t aligned_address = ALIGN_FLOOR(address, 4);
+    released_address_        = (void *)aligned_address;
   }
-
+  void *ReleaseAddress() {
+    return released_address_;
+  }
   Code *GetCode() {
     Code *code = new Code(released_address_, CodeSize());
     return code;

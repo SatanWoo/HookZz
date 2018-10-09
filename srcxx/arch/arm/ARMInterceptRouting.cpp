@@ -40,18 +40,18 @@ InterceptRouting *InterceptRouting::New(HookEntry *entry) {
 }
 
 void ARMInterceptRouting::prepare_thumb() {
-  uintptr_t src_pc         = (uintptr_t)entry_->target_address;
-  Interceptor *interceptor = Interceptor::SharedInstance();
-  MemoryRegion *region     = NULL;
-  uword aligned_src_pc     = ThumbAlign(src_pc);
+  uintptr_t src_address     = (uintptr_t)entry_->target_address;
+  Interceptor *interceptor  = Interceptor::SharedInstance();
+  MemoryRegion *region      = NULL;
+  uword aligned_src_address = ThumbAlign(src_address);
 
-  uint32_t inst = *(uint32_t *)aligned_src_pc;
+  uint32_t inst = *(uint32_t *)aligned_src_address;
   if (interceptor->options().enable_b_branch) {
     DLOG("%s", "[*] Enable b branch maybe cause crash, if crashed, please disable it.\n");
     // If the first instuction is thumb1(2 bytes), the first choice for use is thumb1 b-xxx, else use thumb2 b-xxx
     if (!is_thumb2(inst)) {
       // Try allocate a code cave for fast-forward-transfer-trampoline
-      region = CodeChunk::AllocateCodeCave(aligned_src_pc, THUMB1_B_XXX_RANGE, ARM_FULL_REDIRECT_SIZE);
+      region = CodeChunk::AllocateCodeCave(aligned_src_address, THUMB1_B_XXX_RANGE, ARM_FULL_REDIRECT_SIZE);
       if (region) {
         DLOG("%s", "[*] Use Thumb1 B-xxx Branch\n");
         branch_type_  = Thumb1_B_Branch;
@@ -61,7 +61,7 @@ void ARMInterceptRouting::prepare_thumb() {
     // Otherwith condisider the thumb2(4 bytes) b-xxx
     // Try allocate a code cave for fast-forward-transfer-trampoline
     if (!region) {
-      region = CodeChunk::AllocateCodeCave(aligned_src_pc, THUMB2_B_XXX_RANGE, ARM_FULL_REDIRECT_SIZE);
+      region = CodeChunk::AllocateCodeCave(aligned_src_address, THUMB2_B_XXX_RANGE, ARM_FULL_REDIRECT_SIZE);
       if (region) {
         DLOG("%s", "[*] Use Thumb2 B-xxx Branch\n");
         branch_type_  = Thumb2_B_Branch;
@@ -81,11 +81,11 @@ void ARMInterceptRouting::prepare_thumb() {
 }
 
 void ARMInterceptRouting::prepare_arm() {
-  uintptr_t src_pc         = (uintptr_t)entry_->target_address;
+  uintptr_t src_address    = (uintptr_t)entry_->target_address;
   Interceptor *interceptor = Interceptor::SharedInstance();
   MemoryRegion *region     = NULL;
   if (interceptor->options().enable_b_branch) {
-    region = CodeChunk::AllocateCodeCave(src_pc, ARM_B_XXX_RANGE, ARM_FULL_REDIRECT_SIZE);
+    region = CodeChunk::AllocateCodeCave(src_address, ARM_B_XXX_RANGE, ARM_FULL_REDIRECT_SIZE);
     if (region) {
       DLOG("%s", "[*] Use ARM B-xxx Branch\n");
       branch_type_  = ARM_B_Branch;
@@ -106,11 +106,11 @@ void ARMInterceptRouting::prepare_arm() {
 
 // Determined if use B_Branch or LDR_Branch, and backup the origin instrutions
 void ARMInterceptRouting::Prepare() {
-  uintptr_t src_pc = (uintptr_t)entry_->target_address;
+  uintptr_t src_address = (uintptr_t)entry_->target_address;
 
   // set instruction running state
   execute_state_ = ARMExecuteState;
-  if (src_pc % 2) {
+  if (src_address % 2) {
     execute_state_ = ThumbExecuteState;
   }
 
@@ -123,7 +123,7 @@ void ARMInterceptRouting::Prepare() {
 
   // Gen the relocated code
   Code *code;
-  code                              = GenRelocateCode(src_pc, &relocate_size);
+  code                              = GenRelocateCode(src_address, &relocate_size);
   entry_->relocated_origin_function = (void *)code->raw_instruction_start();
   // If Thumb Execute, code snippet address should be odd.
   if (execute_state_ == ThumbExecuteState) {

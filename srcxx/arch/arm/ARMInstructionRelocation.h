@@ -96,7 +96,7 @@ private:
     uint32_t U, imm12;
     int32_t offset = x.offset();
     if (offset > 0) {
-      U = B7;
+      U     = B7;
       imm12 = offset;
     } else {
       U     = 0;
@@ -152,7 +152,7 @@ private:
       UNIMPLEMENTED();
     }
 
-    EmitInt16(0xf0 | LFT(S, 1, 10) | LFT(imm10, 10, 0));
+    EmitInt16(0xf000 | LFT(S, 1, 10) | LFT(imm10, 10, 0));
     if (link) {
       // Not use LFT(1, 1, 14), and use B14 for accelerate
       EmitInt16(0x9000 | LFT(j1, 1, 13) | (LFT(j2, 1, 11)) | LFT(imm11, 11, 0) | B14);

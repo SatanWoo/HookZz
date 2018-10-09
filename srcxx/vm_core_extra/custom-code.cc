@@ -14,12 +14,19 @@ using namespace zz::arm64;
 AssemblerCode *AssemblerCode::FinalizeTurboAssembler(AssemblerBase *assembler) {
   TurboAssembler *turbo_assembler = reinterpret_cast<TurboAssembler *>(assembler);
   int code_size                   = turbo_assembler->CodeSize();
-  // Allocate the executable memory
+
+// Allocate the executable memory
+#if V8_TARGET_ARCH_ARM64 || V8_TARGET_ARCH_ARM
+  // extra bytes for align needed
+  MemoryRegion *code_region = CodeChunk::AllocateCode(code_size + 4);
+#else
   MemoryRegion *code_region = CodeChunk::AllocateCode(code_size);
-  void *code_address        = code_region->pointer();
+#endif
+
+  void *code_address = code_region->pointer();
   // Realize(Relocate) the buffer_code to the executable_memory_address, remove the ExternalLabels, etc, the pc-relative instructions
   turbo_assembler->CommitRealize(code_address);
-  CodeChunk::PatchCodeBuffer(code_address, turbo_assembler->GetCodeBuffer());
+  CodeChunk::PatchCodeBuffer(turbo_assembler->ReleaseAddress(), turbo_assembler->GetCodeBuffer());
   Code *code = turbo_assembler->GetCode();
   DLOG("[*] AssemblerCode finalize assembler at %p\n", code->raw_instruction_start());
   return reinterpret_cast<AssemblerCode *>(code);

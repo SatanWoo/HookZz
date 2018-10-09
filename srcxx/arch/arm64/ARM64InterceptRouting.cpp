@@ -22,7 +22,7 @@ InterceptRouting *InterceptRouting::New(HookEntry *entry) {
 
 // Determined if use B_Branch or LDR_Branch, and backup the origin instrutions
 void ARM64InterceptRouting::Prepare() {
-  uint64_t src_pc          = (uint64_t)entry_->target_address;
+  uint64_t src_address     = (uint64_t)entry_->target_address;
   Interceptor *interceptor = Interceptor::SharedInstance();
   int relocate_size        = 0;
   MemoryRegion *region     = NULL;
@@ -30,7 +30,7 @@ void ARM64InterceptRouting::Prepare() {
   if (interceptor->options().enable_b_branch) {
     DLOG("%s", "[*] Enable b branch maybe cause crash, if crashed, please disable it.\n");
     DLOG("%s", "[*] Use ARM64 B-xxx Branch.\n");
-    region = CodeChunk::AllocateCodeCave(src_pc, ARM64_B_XXX_RANGE, ARM64_TINY_REDIRECT_SIZE);
+    region = CodeChunk::AllocateCodeCave(src_address, ARM64_B_XXX_RANGE, ARM64_TINY_REDIRECT_SIZE);
     if (region) {
       relocate_size = ARM64_TINY_REDIRECT_SIZE;
       branch_type_  = ARM64_B_Branch;
@@ -49,7 +49,7 @@ void ARM64InterceptRouting::Prepare() {
 
   // Gen the relocated code
   Code *code;
-  code                              = GenRelocateCode(src_pc, &relocate_size);
+  code                              = GenRelocateCode(src_address, &relocate_size);
   entry_->relocated_origin_function = (void *)code->raw_instruction_start();
   DLOG("[*] Relocate origin (prologue) instruction at %p.\n", (void *)code->raw_instruction_start());
 

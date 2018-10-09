@@ -14,12 +14,20 @@
 
 namespace zz {
 namespace arm {
-  
+
 #define ThumbAlign(x) (((uword)-2) & x)
 
 // ARM design had a 3-stage pipeline (fetch-decode-execute)
 #define ARM_PC_OFFSET 8
 #define Thumb_PC_OFFSET 4
+
+// define instruction length
+#define ARM_INST_LEN 4
+#define Thumb1_INST_LEN 2
+#define Thumb2_INST_LEN 4
+
+// Thumb instructions address is odd
+#define THUMB_ADDRESS_FLAG 1
 
 constexpr Register TMP0 = r12;
 
@@ -245,7 +253,11 @@ public:
 class Assembler : public AssemblerBase {
 public:
   void CommitRealize(void *address) {
-    released_address_ = address;
+    uint32_t aligned_address = ALIGN_FLOOR(address, 4);
+    released_address_        = (void *)aligned_address;
+  }
+  void *ReleaseAddress() {
+    return released_address_;
   }
   Code *GetCode() {
     Code *code = new Code(released_address_, CodeSize());
